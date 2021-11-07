@@ -13,17 +13,3 @@ module Cartagrapher
 someFunc :: IO ()
 someFunc = putStrLn ("someFunc" :: String)
 
-data GenomeFormat = 
-  Genome {
-  rows :: Int,
-  columns :: Int,
-  reachBack :: Int,
-  functionTableSize :: Int,
-  numFunctionInputs :: Int
-}
-
-data NodeSpec =
-  NodeSpec {
-    function :: Int,
-    args :: [Int]
-  }
