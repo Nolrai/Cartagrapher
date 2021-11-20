@@ -16,13 +16,13 @@ cartisian genetic programing
 module Cartagrapher where
 
 import Relude
-import qualified Data.Vector.Sized as VS
 import Data.Vector.Unboxed.Sized as VU
-import Data.Vector.Unboxed.Mutable.Sized as VM
+    ( MVector, Unbox, replicateM, Vector )
+import Data.Vector.Unboxed.Mutable.Sized as VM ( read, write )
 import qualified Data.List as L
-import Test.SmallCheck.Series
-import Control.Monad.Primitive
-import Data.Finite 
+import Test.SmallCheck.Series ( Serial(..), (\/) )
+import Control.Monad.Primitive ( PrimMonad(PrimState) )
+import Data.Finite ( Finite, finites ) 
 
 data Action n = Toggle (Finite n) | Swap (Finite n) (Finite n)
   deriving stock (Show, Read, Eq, Ord, Generic)
@@ -45,14 +45,15 @@ isValid Instruction {..} =
   pairwiseDistinct indexes
   where
     Pair ((_, a), (_, b)) = control
+    ab = L.nub [a, b] -- its okay for a == b
     cd = case action of
       Toggle c -> [c]
       Swap c d -> [c, d]
-    indexes = a:b:cd
+    indexes = (L.++) ab cd
 
 pairwiseDistinct :: Ord a => [a] -> Bool
 pairwiseDistinct [] = True
-pairwiseDistinct (x:xs) = Relude.notElem x xs && pairwiseDistinct xs
+pairwiseDistinct (x:xs) = L.notElem x xs && pairwiseDistinct xs
 
 type MyConstraint (n :: Nat) m = (KnownNat n, MonadReader (VU.MVector n (PrimState m) Bool) m , PrimMonad m)
 
@@ -64,33 +65,33 @@ runInstruction Instruction {..} =
     b' <- (== fst b) <$> readV (snd b)
     when (a' && b') $
       case action of
-        Toggle ix -> toggleM ix
-        Swap ix jx -> swapM ix jx
+        Toggle i -> toggleM i
+        Swap i j -> swapM i j
 
 readV :: MyConstraint n m => Finite n -> m Bool
-readV (ix :: (Finite n)) = do
+readV (i :: (Finite n)) = do
   v <- ask
-  VM.read v (fromIntegral ix)
+  VM.read v i
 
 writeV :: MyConstraint n m => Finite n -> Bool -> m ()
-writeV (ix :: (Finite n)) (x :: Bool) = do
+writeV (i :: (Finite n)) (x :: Bool) = do
   v <- ask
-  VM.write v (fromIntegral ix) x
+  VM.write v i x
 
 toggleM :: MyConstraint n m => Finite n -> m ()
-toggleM ix = do
-  b <- readV ix
-  writeV ix (not b)
+toggleM i = do
+  b <- readV i
+  writeV i (not b)
 
 swapM :: MyConstraint n m => Finite n -> Finite n -> m ()
-swapM ix jx = do
-  ixValue <- readV ix
-  jxValue <- readV jx
-  writeV ix jxValue
-  writeV jx ixValue
+swapM i j = do
+  ixValue <- readV i
+  jxValue <- readV j
+  writeV i jxValue
+  writeV j ixValue
 
-instance (KnownNat n, Serial m a) => Serial m (VS.Vector n a) where
-  series = VS.replicateM series
+instance (KnownNat n, Unbox a, Serial m a) => Serial m (VU.Vector n a) where
+  series = VU.replicateM series
 
 instance (Serial m Int, KnownNat n) => Serial m (Finite n) where
   series = go finites
