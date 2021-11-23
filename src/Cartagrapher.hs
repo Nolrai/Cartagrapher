@@ -1,7 +1,7 @@
 {-# Language DerivingVia, DeriveGeneric, GeneralizedNewtypeDeriving, DeriveFunctor #-}
 {-# Language RecordWildCards #-}
 {-# LANGUAGE FlexibleInstances, UndecidableInstances, FlexibleContexts, MultiParamTypeClasses #-}
-{-# Language ScopedTypeVariables, ConstraintKinds, DataKinds, KindSignatures, GADTs #-}
+{-# Language ScopedTypeVariables, ConstraintKinds, DataKinds, KindSignatures, GADTs, TypeOperators #-}
 {-# Language NoImplicitPrelude #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -16,13 +16,13 @@ cartisian genetic programing
 module Cartagrapher where
 
 import Relude
-import Data.Vector.Unboxed.Sized as VU
-    ( MVector, Unbox, replicateM, Vector )
-import Data.Vector.Unboxed.Mutable.Sized as VM ( read, write )
+import qualified Data.Vector.Unboxed.Sized as VU
+import qualified Data.Vector.Unboxed.Mutable.Sized as VM ( read, write )
 import qualified Data.List as L
 import Test.SmallCheck.Series ( Serial(..), (\/) )
 import Control.Monad.Primitive ( PrimMonad(PrimState) )
-import Data.Finite ( Finite, finites ) 
+import Data.Finite
+import GHC.TypeLits
 
 data Action n = Toggle (Finite n) | Swap (Finite n) (Finite n)
   deriving stock (Show, Read, Eq, Ord, Generic)
@@ -90,7 +90,10 @@ swapM i j = do
   writeV i jxValue
   writeV j ixValue
 
-instance (KnownNat n, Unbox a, Serial m a) => Serial m (VU.Vector n a) where
+hammingWeight :: VU.Vector n Bool -> Natural 
+hammingWeight = fromIntegral . VU.sum . VU.map (\ b -> if b then 1 :: Int else 0 :: Int)
+
+instance (KnownNat n, VU.Unbox a, Serial m a) => Serial m (VU.Vector n a) where
   series = VU.replicateM series
 
 instance (Serial m Int, KnownNat n) => Serial m (Finite n) where
