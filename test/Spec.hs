@@ -27,6 +27,7 @@ main = do
   smallCheck 100 (forAll checkToggle0)
   smallCheck 100 (forAll checkToggle1)
   
+  
 checkSwap0 :: VS.Vector 5 Bool -> Finite 5 -> Finite 5 -> Bool
 checkSwap0 vStart ix iy =
     runST $ do

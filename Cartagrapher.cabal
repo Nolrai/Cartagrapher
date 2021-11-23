@@ -29,6 +29,8 @@ common common-options
                      , primitive
                      , mtl
                      , finite-typelits
+                     , bytestring-trie
+                     , bytestring
   
   mixins:              base hiding (Prelude)
   
