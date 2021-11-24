@@ -3,7 +3,6 @@
 {-# LANGUAGE FlexibleInstances, UndecidableInstances, FlexibleContexts, MultiParamTypeClasses #-}
 {-# Language ScopedTypeVariables, ConstraintKinds, DataKinds, KindSignatures, GADTs, TypeOperators, NoStarIsType #-}
 {-# Language NoImplicitPrelude #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 {- |
 Copyright: (c) 2021 Chris Upshaw
@@ -16,17 +15,18 @@ cartisian genetic programing
 module Cartagrapher where
 
 import Relude
-import qualified Data.Vector.Storable as V
-import qualified Data.Vector.Storable.Sized as VU
-import qualified Data.Vector.Storable.Mutable.Sized as VM ( read, write )
 import qualified Data.List as L
-import Test.SmallCheck.Series ( Serial(..), (\/) )
+import Test.SmallCheck.Series ( Serial(..) )
 import Control.Monad.Primitive ( PrimMonad(PrimState) )
+import Control.Monad.ST.Strict as ST
+import Data.STRef.Strict as ST
 import Data.Finite
 import GHC.TypeLits
 import Data.ByteString
 import Data.Bits
+import Data.BitsN
 import Foreign.Ptr (castPtr)
+import qualified GHC.IO.FD as ST
 
 data Action n = Toggle (Finite n) | Swap (Finite n) (Finite n)
   deriving stock (Show, Read, Eq, Ord, Generic)
@@ -59,7 +59,7 @@ pairwiseDistinct :: Ord a => [a] -> Bool
 pairwiseDistinct [] = True
 pairwiseDistinct (x:xs) = L.notElem x xs && pairwiseDistinct xs
 
-type MyConstraint (n :: Nat) m = (KnownNat n, MonadReader (VU.MVector n (PrimState m) Bool) m , PrimMonad m)
+type MyConstraint (n :: Nat) m a = (KnownNat n, MonadReader (STRef m a) m , PrimMonad m, BitsN n a)
 
 runInstruction :: MyConstraint n m => Instruction n -> m ()
 runInstruction Instruction {..} =
@@ -75,17 +75,18 @@ runInstruction Instruction {..} =
 readV :: MyConstraint n m => Finite n -> m Bool
 readV (i :: (Finite n)) = do
   v <- ask
-  VM.read v i
+  (`testBit'` i) <$> ST.readSTRef v 
 
 writeV :: MyConstraint n m => Finite n -> Bool -> m ()
-writeV (i :: (Finite n)) (x :: Bool) = do
+writeV i b = do
   v <- ask
-  VM.write v i x
+  let f = if b then setBit' else clearBit'
+  ST.modifySTRef' v (`f` i)
 
 toggleM :: MyConstraint n m => Finite n -> m ()
 toggleM i = do
-  b <- readV i
-  writeV i (not b)
+  v <- ask
+  ST.modifySTRef v (`complementBit'` i)
 
 swapM :: MyConstraint n m => Finite n -> Finite n -> m ()
 swapM i j = do
@@ -93,43 +94,3 @@ swapM i j = do
   jxValue <- readV j
   writeV i jxValue
   writeV j ixValue
-
-hammingWeight :: VU.Vector n Bool -> Natural 
-hammingWeight = fromIntegral . VU.sum . VU.map (\ b -> if b then 1 :: Int else 0 :: Int)
-
-instance (KnownNat n, V.Storable a, Serial m a) => Serial m (VU.Vector n a) where
-  series = VU.replicateM series
-
-instance (Serial m Int, KnownNat n) => Serial m (Finite n) where
-  series = go finites
-    where
-      go [] = mzero
-      go (x:xs) = pure x \/ go xs
-
-packFunction :: (KnownNat n, KnownNat (2 ^ n), KnownNat ((2 ^ n) * n)) =>
- (VU.Vector n Bool -> VU.Vector n Bool) -> IO ByteString 
-packFunction = packVector . flattenVector . functionToVector
-
-packVector :: KnownNat n =>
-  VU.Vector n Bool -> IO ByteString
-packVector v =
-  let len = VU.length v
-      size = len `div` 8 + (if len `mod` 8 == 0 then 0 else 1)
-      in
-  V.unsafeWith (VU.fromSized v) $ \ptr ->
-    packCStringLen (castPtr ptr, size)
-
-flattenVector ::  (KnownNat n, KnownNat (2 ^ n), KnownNat ((2 ^ n) * n)) => 
-  VU.Vector (2 ^ n) (VU.Vector n Bool) -> VU.Vector ((2 ^ n) * n) Bool
-flattenVector v =
-  VU.generate $ \ i ->
-    let (j, k) = separateProduct i in
-      VU.index (VU.index v j) k
-
-functionToVector :: (KnownNat n, KnownNat (2 ^ n)) => 
-  (VU.Vector n Bool -> VU.Vector n Bool) -> VU.Vector (2 ^ n) (VU.Vector n Bool)
-functionToVector f = 
-  VU.generate (f . toBits . fromIntegral)
-
-toBits :: KnownNat n => Word32 -> VU.Vector n Bool
-toBits n = VU.generate ((n `testBit`) . fromIntegral)

@@ -7,95 +7,73 @@ module Main (main) where
 import Relude
 import Data.List (nub)
 import Cartagrapher
-    ( isValid, pairwiseDistinct, swapM, Instruction, hammingWeight, toggleM)
-import Data.Vector.Unboxed.Mutable.Sized as VMS ( copy, new )
-import Data.Vector.Unboxed.Sized as VS
+    ( isValid, pairwiseDistinct, swapM, Instruction, toggleM)
 import Test.SmallCheck ( smallCheck, exists, forAll )
 import Control.Monad.ST (runST)
-import Data.Finite (Finite, finites)
+import Data.STRef (newSTRef, readSTRef)
+import Data.Finite (Finite)
+import Data.Bits
+import Data.BitsN
 
 main :: IO ()
 main = do
   smallCheck 5 (exists (isValid :: Instruction 5 -> Bool)) 
   smallCheck 5 (exists (not . isValid :: Instruction 5 -> Bool))
   smallCheck 5 (forAll (\ (l :: [Word]) -> pairwiseDistinct l == (l == nub l)))
-  smallCheck 5 (forAll (\ l -> withSizedList l (\ v -> fromIntegral (hammingWeight v) <= VS.length v )))
   smallCheck 5 (forAll checkSwap0)
   smallCheck 5 (forAll checkSwap1)
   smallCheck 5 (forAll checkSwap2)
   smallCheck 3 (forAll checkSwap3)
   smallCheck 100 (forAll checkToggle0)
   smallCheck 100 (forAll checkToggle1)
-  
-  
-checkSwap0 :: VS.Vector 5 Bool -> Finite 5 -> Finite 5 -> Bool
-checkSwap0 vStart ix iy =
-    runST $ do
-      v <- VMS.new
-      (v' :: VS.MVector 5 s Bool) <- VS.thaw vStart
-      VMS.copy v v'
-      flip runReaderT v $ do
-        swapM ix iy
-        swapM ix iy
-      vEnd <- VS.freeze v
-      pure (vStart == vEnd)
 
-checkSwap1 :: VS.Vector 5 Bool -> Finite 5 -> Finite 5 -> Bool
-checkSwap1 vStart ix iy =
-    runST $ do
-      v <- VMS.new
-      (v' :: VS.MVector 5 s Bool) <- VS.thaw vStart
-      VMS.copy v v'
-      flip runReaderT v $ do
-        swapM ix iy
-      vEnd <- VS.freeze v
-      pure $ (vStart == vEnd) == (VS.index vStart ix == VS.index vStart iy)
+checkAction action prop vStart =
+  runST $ do
+    r <- newSTRef vStart
+    runReaderT action r
+    vEnd <- readSTRef v
+    pure (prop vStart vEnd)
+  
+checkSwap0 :: Finite 8 -> Finite 8 -> Word8 -> Bool
+checkSwap0 ix iy =
+  checkAction (swapM ix iy >> swapM ix iy) (==)
 
-checkSwap2 :: VS.Vector 5 Bool -> Finite 5 -> Finite 5 -> Bool
+checkSwap1 :: Finite 8 -> Finite 8 -> Word8 -> Bool
+checkSwap1 ix iy =
+    checkAction (swapM ix iy)
+      (\ vStart vEnd -> 
+        (vStart == vEnd) == (VS.index vStart ix == VS.index vStart iy)
+      )
+
+checkSwap2 :: Finite 8 -> Finite 8 -> Word8 -> Bool
 checkSwap2 vStart ix iy =
-    runST $ do
-      v <- VMS.new
-      (v' :: VS.MVector 5 s Bool) <- VS.thaw vStart
-      VMS.copy v v'
-      flip runReaderT v $ do
-        swapM ix iy
-      vEnd <- VS.freeze v
-      pure $ (VS.index vStart ix == VS.index vEnd iy) && (VS.index vStart iy == VS.index vEnd ix)
+    checkAction (swapM ix iy)
+      (\ vStart vEnd -> 
+        (vStart == vEnd) == (VS.index vStart ix == VS.index vStart iy)
+      )
+      (\ vStart vEnd -> 
+        (VS.index vStart ix == VS.index vEnd iy) && (VS.index vStart iy == VS.index vEnd ix)
+      )
 
-checkSwap3 :: VS.Vector 5 Bool -> [(Finite 5, Finite 5)] -> Bool
+checkSwap3 :: [(Finite 8, Finite 8)] -> Word8 -> Bool
 checkSwap3 vStart l =
-    runST $ do
-      v <- VMS.new
-      (v' :: VS.MVector 5 s Bool) <- VS.thaw vStart
-      VMS.copy v v'
-      flip runReaderT v $ Relude.mapM_ (uncurry swapM) l
-      vEnd <- VS.freeze v
-      pure $ hammingWeight vStart == hammingWeight vEnd
+    checkAction 
+      (Relude.mapM_ (uncurry swapM) l)
+      (\ vStart vEnd -> 
+        hammingWeight vStart == hammingWeight vEnd
+      )
 
-checkToggle0 :: VS.Vector 5 Bool -> Finite 5 -> Bool
-checkToggle0 vStart ix =
-    runST $ do
-      v <- VMS.new
-      (v' :: VS.MVector 5 s Bool) <- VS.thaw vStart
-      VMS.copy v v'
-      flip runReaderT v $ do
-        toggleM ix
-        toggleM ix
-      vEnd <- VS.freeze v
-      pure (vStart == vEnd)
+checkToggle0 :: Finite 8 -> Word8 -> Bool
+checkToggle0 ix =
+checkToggle0 ix =
+  checkAction (toggle ix >> toggle ix) (==)
 
-checkToggle1 :: VS.Vector 5 Bool -> Finite 5 -> Bool
-checkToggle1 vStart ix =
-    runST $ do
-      v <- VMS.new
-      (v' :: VS.MVector 5 s Bool) <- VS.thaw vStart
-      VMS.copy v v'
-      flip runReaderT v $ do
-        toggleM ix
-      vEnd <- VS.freeze v
-      pure $ Relude.all 
+checkToggle1 :: Finite 8 -> Word8 -> Bool
+checkToggle1 ix =
+      let test vStart vEmd = Relude.all 
         (\ j ->
           let start = VS.index vStart j in
           let end = VS.index vEnd j in 
             if j == ix then start /= end else start == end)
         finites
+      in checkAction (toggle ix) test
