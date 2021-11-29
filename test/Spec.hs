@@ -1,6 +1,8 @@
 {-# Language ScopedTypeVariables #-}
 {-# Language DataKinds #-}
 {-# Language NoImplicitPrelude #-}
+{-# Language FlexibleContexts #-}
+{-# Language Rank2Types #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Main (main) where
@@ -8,10 +10,12 @@ import Relude
 import Data.List (nub)
 import Cartagrapher
     ( isValid, pairwiseDistinct, swapM, Instruction, toggleM)
+import Control.Monad.Primitive
+import Data.Primative.MutVar
 import Test.SmallCheck ( smallCheck, exists, forAll )
-import Control.Monad.ST (runST)
-import Data.STRef (newSTRef, readSTRef)
-import Data.Finite (Finite)
+import Control.Monad.ST (runST, ST)
+import Data.STRef
+import Data.Finite (Finite, finites)
 import Data.Bits
 import Data.BitsN
 
@@ -27,11 +31,14 @@ main = do
   smallCheck 100 (forAll checkToggle0)
   smallCheck 100 (forAll checkToggle1)
 
+type STAction = forall s. ReaderT (STRef s Word8) (ST s) ()
+
+checkAction :: STAction -> (Word8 -> Word8 -> Bool) -> Word8 -> Bool
 checkAction action prop vStart =
   runST $ do
-    r <- newSTRef vStart
+    r <- newMutVar vStart
     runReaderT action r
-    vEnd <- readSTRef v
+    vEnd <- readMutVar r
     pure (prop vStart vEnd)
   
 checkSwap0 :: Finite 8 -> Finite 8 -> Word8 -> Bool
@@ -42,38 +49,36 @@ checkSwap1 :: Finite 8 -> Finite 8 -> Word8 -> Bool
 checkSwap1 ix iy =
     checkAction (swapM ix iy)
       (\ vStart vEnd -> 
-        (vStart == vEnd) == (VS.index vStart ix == VS.index vStart iy)
+        (vStart == vEnd) == (testBit' ix vStart == testBit' iy vStart)
       )
 
 checkSwap2 :: Finite 8 -> Finite 8 -> Word8 -> Bool
-checkSwap2 vStart ix iy =
+checkSwap2 ix iy =
     checkAction (swapM ix iy)
       (\ vStart vEnd -> 
-        (vStart == vEnd) == (VS.index vStart ix == VS.index vStart iy)
-      )
-      (\ vStart vEnd -> 
-        (VS.index vStart ix == VS.index vEnd iy) && (VS.index vStart iy == VS.index vEnd ix)
+        (testBit' ix vStart == testBit' iy vEnd) && (testBit' iy vStart == testBit' vEnd ix)
       )
 
 checkSwap3 :: [(Finite 8, Finite 8)] -> Word8 -> Bool
-checkSwap3 vStart l =
+checkSwap3 l =
     checkAction 
       (Relude.mapM_ (uncurry swapM) l)
       (\ vStart vEnd -> 
-        hammingWeight vStart == hammingWeight vEnd
+        popCount vStart == popCount vEnd
       )
 
 checkToggle0 :: Finite 8 -> Word8 -> Bool
 checkToggle0 ix =
-checkToggle0 ix =
-  checkAction (toggle ix >> toggle ix) (==)
+  checkAction (toggleM ix >> toggleM ix) (==)
 
 checkToggle1 :: Finite 8 -> Word8 -> Bool
 checkToggle1 ix =
-      let test vStart vEmd = Relude.all 
-        (\ j ->
-          let start = VS.index vStart j in
-          let end = VS.index vEnd j in 
-            if j == ix then start /= end else start == end)
-        finites
-      in checkAction (toggle ix) test
+      let test vStart vEnd = 
+            Relude.all 
+              (\ j ->
+                let start = testBit' vStart j in
+                let end = testBit' vEnd j in 
+                if j == ix then start /= end else start == end
+              )
+              finites
+      in checkAction (toggleM ix) test

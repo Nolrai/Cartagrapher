@@ -26,11 +26,13 @@ common common-options
                      , smallcheck
                      , vector
                      , vector-sized
+                     , monad-primitive
                      , primitive
                      , mtl
                      , finite-typelits
                      , bytestring-trie
                      , bytestring
+                     , logict
   
   mixins:              base hiding (Prelude)
   
@@ -55,6 +57,18 @@ library
   import:              common-options
   hs-source-dirs:      src
   exposed-modules:     Cartagrapher
+                     , Data.BitsN
+                     , Test.Instances.Finite
+
+executable Cartagrapher
+  import:              common-options
+  hs-source-dirs:      app
+  main-is:             Main.hs
+  build-depends:       Cartagrapher
+  ghc-options:         -threaded
+                       -rtsopts
+                       -with-rtsopts=-N
+
 
 test-suite Cartagrapher-test
   import:              common-options

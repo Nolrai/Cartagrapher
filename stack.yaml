@@ -1,3 +1,4 @@
 resolver: lts-18.16
 extra-deps:
   - bytestring-trie-0.2.5.3@sha256:c15a42e256b084c83af9d1b851576cf64bbdbdf30ab547390acd462c0568af54,3252
+  - ../smallcheck
