@@ -21,7 +21,7 @@ source-repository head
   location:            https://github.com/Nolrai/Cartagrapher.git
 
 common common-options
-  build-depends:       base ^>= 4.14.0.0
+  build-depends:       base ^>= 4.15.0.0
                      , relude
                      , smallcheck
                      , vector
@@ -55,10 +55,12 @@ common common-options
 
 library
   import:              common-options
+  build-depends:       boomerang
   hs-source-dirs:      src
   exposed-modules:     Cartagrapher
                      , Data.BitsN
                      , Test.Instances.Finite
+                     , Samson
 
 executable Cartagrapher
   import:              common-options

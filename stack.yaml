@@ -1,4 +1,5 @@
-resolver: lts-18.16
+resolver: lts-19.0
 extra-deps:
   - bytestring-trie-0.2.5.3@sha256:c15a42e256b084c83af9d1b851576cf64bbdbdf30ab547390acd462c0568af54,3252
   - ../smallcheck
+  - boomerang-1.4.7@sha256:c385e2269c78b2b2135d5b5b47491525e52f8d145f84eca427c7649c953c1cdf,2132

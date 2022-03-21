@@ -43,6 +43,7 @@ loop v = do
 pairUp :: [[a]] -> [[a]]
 pairUp l = (<>) <$> l <*> l
 
+insertIfNew :: ByteString -> a -> Trie a -> Trie a
 insertIfNew = alterBy f
   where
     f _ _ (Just x) = Just x
