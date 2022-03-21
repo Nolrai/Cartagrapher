@@ -24,11 +24,10 @@ module Cartagrapher where
 import Relude
 import qualified Data.List as L
 import Test.SmallCheck.Series
-import Test.SmallCheck.SeriesMonad
 import Control.Monad.Primitive ( PrimMonad(PrimState) )
 import Control.Monad.ST
 import Data.Primitive.MutVar
-import Data.Finite ( Finite )
+import Data.Finite ( Finite, finites )
 import GHC.TypeLits ()
 import Data.ByteString ()
 import Data.Bits ()
@@ -36,28 +35,45 @@ import Data.BitsN
     ( clearBit', complementBit', setBit', testBit', BitsN )
 import Data.ByteString.Builder
 import Data.Vector.Storable as V
-import Control.Monad.Logic
 import Test.Instances.Finite ()
+
+class Listable a where
+  listOut :: [a]
+
+instance Listable Bool where
+  listOut = [False, True]
 
 data Action n = Toggle (Finite n) | Swap (Finite n) (Finite n)
   deriving stock (Show, Read, Eq, Ord, Generic)
 
+instance (KnownNat n) => Listable (Finite n) where
+  listOut = finites
+
+instance (KnownNat n) => Listable (Action n) where
+  listOut = (Toggle <$> listOut) <> (Swap <$> listOut <*> listOut)
+
 instance (KnownNat n, Monad m) => Serial m (Action n)
+
+instance (Listable a, Listable b) => Listable (a, b) where
+  listOut = (,) <$> listOut <*> listOut
 
 newtype Pair a = Pair {toTuple :: (a, a)}
   deriving stock (Functor)
-  deriving newtype (Ord, Eq, Show, Read, Generic)
+  deriving newtype (Ord, Eq, Show, Read, Generic, Listable)
 
 instance Serial m a => Serial m (Pair a)
 
 data Instruction n = Instruction {control :: Pair (Bool, Finite n), action :: Action n}
   deriving stock (Show, Read, Eq, Ord, Generic)
 
+instance Listable (Instruction 8) where
+  listOut = L.filter isValid (Instruction <$> listOut <*> listOut)
+
 instance (KnownNat n, Monad m) => Serial m (Instruction n)
 
-isValid :: Instruction n -> Bool
+isValid :: Instruction 8 -> Bool
 isValid Instruction {..} = 
-  pairwiseDistinct indexes
+  pairwiseDistinct indexes && (a < 6) && (b < 6)
   where
     Pair ((_, a), (_, b)) = control
     ab = L.nub [a, b] -- its okay for a == b
@@ -115,14 +131,12 @@ funToByteStream f = toStrict . toLazyByteString $ V.foldl' (\ sofar a -> sofar <
   toWord8 = fromIntegral
   v = V.generate maxWord8 (\ x -> toWord8 x `xor` f (toWord8 x))
 
-getSeries :: Monad m => Depth -> Series m a -> m [a]
-getSeries depth s = observeAllT $ runSeries depth s
-
-allPrograms :: Monad m => Int -> m [[Instruction 8]]
-allPrograms len = getSeries 1 (Relude.replicateM len series)
+allPrograms :: Int -> [[Instruction 8]]
+allPrograms len = Relude.replicateM len listOut
 
 runProgram :: [Instruction 8] -> Word8 -> Word8
 runProgram p start = runST $ do
   r <- newMutVar start
   runReaderT (runInstruction `Relude.mapM_` p) r
   readMutVar r
+
